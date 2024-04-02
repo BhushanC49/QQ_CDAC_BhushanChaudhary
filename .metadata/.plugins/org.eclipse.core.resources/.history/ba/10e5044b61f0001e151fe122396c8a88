@@ -1,0 +1,88 @@
+package com.app.my_translator_project;
+
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVPrinter;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
+
+import com.google.cloud.translate.Translate;
+
+
+public class MarathiToEnglishTranslator {
+
+    private static final String[] ROW_NUMBERS = { "4", "7", "8" };
+
+    public static void main(String[] args) throws IOException {
+        // Load the PDF file
+        PDDocument document = PDDocument.load(new File("path/to/marathi.pdf"));
+
+        // Extract text from the PDF
+        PDFTextStripper stripper = new PDFTextStripper();
+        String text = stripper.getText(document);
+
+        // Translate the relevant rows
+        List<String> translatedRows = translateRows(text);
+
+        // Save the translated rows to a CSV file
+        saveToCSV(translatedRows);
+
+        // Close the PDF document
+        document.close();
+    }
+
+    private static List<String> translateRows(String text) throws IOException {
+        List<String> rows = extractRows(text);
+
+        Translate translate = TranslateOptions.getDefaultInstance().getService();
+
+        List<String> translatedRows = new ArrayList<>();
+        for (String row : rows) {
+            String translatedText = translateText(translate, row);
+            translatedRows.add(translatedText);
+        }
+
+        return translatedRows;
+    }
+
+    private static List<String> extractRows(String text) {
+        List<String> rows = new ArrayList<>();
+
+        for (String line : text.split("\n")) {
+            for (String rowNumber : ROW_NUMBERS) {
+                if (line.contains("(" + rowNumber + ")")) {
+                    rows.add(line);
+                }
+            }
+        }
+
+        return rows;
+    }
+
+    private static String translateText(Translate translate, String text) throws IOException {
+        Translation translation = translate.translate(text,
+                TranslateOptions.newBuilder().setSourceLanguage("mr").setTargetLanguage("en").build());
+
+        return translation.getTranslatedText();
+    }
+
+    private static void saveToCSV(List<String> rows) throws IOException {
+        // Specify the CSV file header
+        String[] headers = { "Row", "Translation" };
+
+        try (FileWriter writer = new FileWriter("translated_rows.csv");
+             CSVPrinter csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT.withHeader(headers))) {
+
+            for (String row : rows) {
+                csvPrinter.printRecord(row);
+            }
+
+            System.out.println("Translation saved to translated_rows.csv");
+        }
+    }
+}

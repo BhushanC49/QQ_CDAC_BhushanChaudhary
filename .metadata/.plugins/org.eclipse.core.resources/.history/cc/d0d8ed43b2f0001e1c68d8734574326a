@@ -1,0 +1,99 @@
+package com.Quodequay.my_ocr_project;
+
+import net.sourceforge.tess4j.ITesseract;
+import net.sourceforge.tess4j.Tesseract;
+import net.sourceforge.tess4j.TesseractException;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.rendering.ImageType;
+import org.apache.pdfbox.rendering.PDFRenderer;
+
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+public class OCR {
+
+    public static void main(String[] args) {
+        try {
+            // Load the PDF document
+            File pdfFile = new File("input.pdf");
+            PDDocument pdfDocument = PDDocument.load(pdfFile);
+
+            // Create a list to store the PDF pages as images
+            List<BufferedImage> images = new ArrayList<>();
+
+            // Convert each page of the PDF to an image
+            PDFRenderer pdfRenderer = new PDFRenderer(pdfDocument);
+            for (PDPage page : pdfDocument.getPages()) {
+                images.add(pdfRenderer.renderImageWithDPI(page, 300, ImageType.RGB));
+            }
+
+            // Create a Tesseract instance and set the OCR language
+            ITesseract tesseract = new Tesseract();
+            tesseract.setDatapath("tessdata");
+            tesseract.setLanguage("eng");
+
+            // Create a Word document
+            File wordFile = new File("output.docx");
+            WordToPdfConverter.createWordDocument(wordFile, (page, image) -> {
+                try {
+                    // Perform OCR on the image
+                    String ocrText = tesseract.doOCR(image);
+
+                    // Add the OCR text to the Word document
+                    page.addParagraph(ocrText);
+                } catch (TesseractException e) {
+                    e.printStackTrace();
+                }
+            }, images);
+
+            // Save the Word document
+            wordFile.getParentFile().mkdirs();
+            wordFile.createNewFile();
+            WordToPdfConverter.saveWordDocument(wordFile);
+
+            // Close the PDF document
+            pdfDocument.close();
+
+        } catch (IOException | TesseractException e) {
+            e.printStackTrace();
+        }
+    }
+
+}
+
+class WordToPdfConverter {
+
+    public static void createWordDocument(File file, WordDocumentCallback callback, List<BufferedImage> images) throws IOException {
+        // Create a new Word document
+        XWPFDocument document = new XWPFDocument();
+
+        // Add a new page to the Word document
+        XWPFParagraph paragraph = document.createParagraph();
+        XWPFRun run = paragraph.createRun();
+
+        // Iterate over the PDF pages and add them to the Word document
+        for (int i = 0; i < images.size(); i++) {
+            BufferedImage image = images.get(i);
+
+            // Call the callback function to add the OCR text to the Word document
+            String ocrText = callback.call(document.createParagraph(), image);
+
+            // Add the image to the Word document
+            run.addPicture(new FileInputStream(fileToTempFile(image)), XWPFDocument.PICTURE_TYPE_PNG, null, 0, 0, 0, 0, 24 * 3600 * 1000);
+
+            // Add a line break
+            if (i < images.size() - 1) {
+                document.createParagraph().createRun().addBreak(BreakType.PAGE);
+            }
+        }
+
+        // Save the Word document
+        try (FileOutputStream outputStream = new FileOutputStream(file)) {
+            document.write(outputStream);
+        }
+    }
